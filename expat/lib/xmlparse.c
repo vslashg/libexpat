@@ -648,6 +648,7 @@ struct XML_ParserStruct {
   XML_Index m_parseEndByteIndex;
   const char *m_parseEndPtr;
   size_t m_partialTokenBytesBefore; /* used in heuristic to avoid O(n^2) */
+  float m_partialTokenDeferRatio;   /* tuning for heuristic */
   XML_Char *m_dataBuf;
   XML_Char *m_dataBufEnd;
   XML_StartElementHandler m_startElementHandler;
@@ -988,7 +989,8 @@ callProcessor(XML_Parser parser, const char *start, const char *end,
     // Heuristic: don't try to parse a partial token again until the amount of
     // available data has increased significantly.
     const size_t had_before = parser->m_partialTokenBytesBefore;
-    const bool enough = (have_now >= g_initMaxDeferRatio * had_before);
+    const bool enough
+        = (have_now >= parser->m_partialTokenDeferRatio * had_before);
 
     if (! enough) {
       *endPtr = start; // callers may expect this to be set
@@ -1189,6 +1191,7 @@ parserInit(XML_Parser parser, const XML_Char *encodingName) {
   parser->m_parseEndByteIndex = 0;
   parser->m_parseEndPtr = NULL;
   parser->m_partialTokenBytesBefore = 0;
+  parser->m_partialTokenDeferRatio = g_initMaxDeferRatio;
   parser->m_declElementType = NULL;
   parser->m_declAttributeId = NULL;
   parser->m_declEntity = NULL;
@@ -2612,6 +2615,15 @@ XML_SetBillionLaughsAttackProtectionActivationThreshold(
   return XML_TRUE;
 }
 #endif /* XML_GE == 1 */
+
+XML_Bool XMLCALL
+XML_SetReparseDeferralRatio(XML_Parser parser, float max_ratio) {
+  if (parser != NULL && isfinite(max_ratio) && max_ratio >= 1.0f) {
+    parser->m_partialTokenDeferRatio = max_ratio;
+    return XML_TRUE;
+  }
+  return XML_FALSE;
+}
 
 /* Initially tag->rawName always points into the parse buffer;
    for those TAG instances opened while the current parse buffer was

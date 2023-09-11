@@ -47,6 +47,8 @@
 
 #include <assert.h>
 
+#include <float.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -5304,6 +5306,181 @@ START_TEST(test_big_tokens_take_linear_time) {
 }
 END_TEST
 
+START_TEST(test_set_reparse_defer_limit) {
+  const char *const pre = "<d>";
+  const char *const start = "<x attr='";
+  const char *const end = "'></x>";
+  const char *const post = "</d>";
+  const float cases[] = {1.0f, 1.1f, 2.0f, 7.89f, FLT_MAX};
+  const int n = sizeof(cases) / sizeof(cases[0]);
+  char eeeeee[100];
+  const int fillsize = (int)sizeof(eeeeee);
+  memset(eeeeee, 'e', fillsize);
+
+  for (int i = 0; i < n; ++i) {
+    const float growth = cases[i];
+    if (growth == FLT_MAX) {
+      set_subtest("growth=FLT_MAX");
+    } else {
+      set_subtest("growth=%.2f", (double)growth);
+    }
+
+    XML_Parser parser = XML_ParserCreate(NULL);
+    assert_true(parser != NULL);
+    assert_true(XML_SetReparseDeferralRatio(parser, growth));
+
+    CharData storage;
+    CharData_Init(&storage);
+    XML_SetUserData(parser, &storage);
+    XML_SetStartElementHandler(parser, start_element_event_handler);
+
+    enum XML_Status status;
+    // parse the start text
+    status = XML_Parse(parser, pre, (int)strlen(pre), XML_FALSE);
+    if (status != XML_STATUS_OK) {
+      xml_failure(parser);
+    }
+    CharData_CheckXMLChars(&storage, XCS("d")); // first element should be done
+
+    // ..and the start of the token
+    status = XML_Parse(parser, start, (int)strlen(start), XML_FALSE);
+    if (status != XML_STATUS_OK) {
+      xml_failure(parser);
+    }
+    CharData_CheckXMLChars(&storage, XCS("d")); // still just the first one
+
+    // try to parse lots of 'e', but the token isn't finished
+    for (int c = 0; c < 100; ++c) {
+      status = XML_Parse(parser, eeeeee, fillsize, XML_FALSE);
+      if (status != XML_STATUS_OK) {
+        xml_failure(parser);
+      }
+    }
+    CharData_CheckXMLChars(&storage, XCS("d")); // *still* just the first one
+
+    // end the <x> token.
+    status = XML_Parse(parser, end, (int)strlen(end), XML_FALSE);
+    if (status != XML_STATUS_OK) {
+      xml_failure(parser);
+    }
+
+    // see how long it takes until the <x> is actually parsed
+    int extrafills = 0;
+    while (extrafills < 10000 && CharData_SameXMLChars(&storage, XCS("d"))) {
+      extrafills++;
+      status = XML_Parse(parser, eeeeee, fillsize, XML_FALSE);
+      if (status != XML_STATUS_OK) {
+        xml_failure(parser);
+      }
+    }
+    // here's the critical part: the parser must not have overshot too much
+    if (growth == FLT_MAX) {
+      // ..except huge settings, which defer everything until isFinal=XML_TRUE
+      CharData_CheckXMLChars(&storage, XCS("d"));
+    } else {
+      CharData_CheckXMLChars(&storage, XCS("dx")); // the <x> should be done
+      const int tokensize
+          = (int)strlen(start) + 100 * fillsize + (int)strlen(end);
+      const int just_enough
+          = (int)strlen(pre) + tokensize + extrafills * fillsize;
+      const int not_enough = just_enough - fillsize;
+      assert_true(not_enough < tokensize * growth);
+    }
+
+    // parse the final text
+    status = XML_Parse(parser, post, (int)strlen(post), XML_TRUE);
+    if (status != XML_STATUS_OK) {
+      xml_failure(parser);
+    }
+    CharData_CheckXMLChars(&storage, XCS("dx")); // last chance, must be done.
+
+    XML_ParserFree(parser);
+  }
+}
+END_TEST
+
+START_TEST(test_set_reparse_limit_on_null_parser) {
+  assert_true(XML_SetReparseDeferralRatio(NULL, 0) == XML_FALSE);
+  assert_true(XML_SetReparseDeferralRatio(NULL, 10) == XML_FALSE);
+  assert_true(XML_SetReparseDeferralRatio(NULL, 100) == XML_FALSE);
+  assert_true(XML_SetReparseDeferralRatio(NULL, FLT_MAX) == XML_FALSE);
+}
+END_TEST
+
+START_TEST(test_set_reparse_limit_on_the_fly) {
+  const char *const pre = "<d><x attr='";
+  const char *const end = "'></x";
+  const char *const post = ">";
+  char iiiiii[100];
+  const int fillsize = (int)sizeof(iiiiii);
+  memset(iiiiii, 'i', fillsize);
+
+  XML_Parser parser = XML_ParserCreate(NULL);
+  assert_true(parser != NULL);
+  assert_true(XML_SetReparseDeferralRatio(parser, 10000));
+
+  CharData storage;
+  CharData_Init(&storage);
+  XML_SetUserData(parser, &storage);
+  XML_SetStartElementHandler(parser, start_element_event_handler);
+
+  enum XML_Status status;
+  // parse the start text
+  status = XML_Parse(parser, pre, (int)strlen(pre), XML_FALSE);
+  if (status != XML_STATUS_OK) {
+    xml_failure(parser);
+  }
+  CharData_CheckXMLChars(&storage, XCS("d")); // first element should be done
+
+  // try to parse some 'i', but the token isn't finished
+  status = XML_Parse(parser, iiiiii, fillsize, XML_FALSE);
+  if (status != XML_STATUS_OK) {
+    xml_failure(parser);
+  }
+  CharData_CheckXMLChars(&storage, XCS("d")); // *still* just the first one
+
+  // end the <x> token.
+  status = XML_Parse(parser, end, (int)strlen(end), XML_FALSE);
+  if (status != XML_STATUS_OK) {
+    xml_failure(parser);
+  }
+  CharData_CheckXMLChars(&storage, XCS("d")); // not yet.
+
+  // now change the heuristic setting and add the minimum amount of data
+  assert_true(XML_SetReparseDeferralRatio(parser, 1.0));
+  // we avoid isFinal=XML_TRUE, because that would force-bypass the heuristic.
+  status = XML_Parse(parser, post, (int)strlen(post), XML_FALSE);
+  if (status != XML_STATUS_OK) {
+    xml_failure(parser);
+  }
+  CharData_CheckXMLChars(&storage, XCS("dx"));
+
+  XML_ParserFree(parser);
+}
+END_TEST
+
+START_TEST(test_set_bad_reparse_limit) {
+  XML_Parser parser = XML_ParserCreate(NULL);
+  assert_true(XML_TRUE == XML_SetReparseDeferralRatio(parser, 2.0f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, 0.999f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, 0.5f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, 0.1f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, 0.0f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, -0.0f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, -0.1f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, -0.5f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, -1.0f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, -1.1f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, -2.0f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, -20000.0f));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, INFINITY));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, -INFINITY));
+  assert_true(XML_FALSE == XML_SetReparseDeferralRatio(parser, NAN));
+  assert_true(XML_TRUE == XML_SetReparseDeferralRatio(parser, 1.0f));
+  XML_ParserFree(parser);
+}
+END_TEST
+
 void
 make_basic_test_case(Suite *s) {
   TCase *tc_basic = tcase_create("basic tests");
@@ -5545,4 +5722,8 @@ make_basic_test_case(Suite *s) {
                                 test_pool_integrity_with_unfinished_attr);
   tcase_add_test__if_xml_ge(tc_basic, test_nested_entity_suspend);
   tcase_add_test(tc_basic, test_big_tokens_take_linear_time);
+  tcase_add_test(tc_basic, test_set_reparse_defer_limit);
+  tcase_add_test(tc_basic, test_set_reparse_limit_on_null_parser);
+  tcase_add_test(tc_basic, test_set_reparse_limit_on_the_fly);
+  tcase_add_test(tc_basic, test_set_bad_reparse_limit);
 }

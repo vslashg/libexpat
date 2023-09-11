@@ -10,6 +10,7 @@
    Copyright (c) 2002-2004 Fred L. Drake, Jr. <fdrake@users.sourceforge.net>
    Copyright (c) 2017      Rhodri James <rhodri@wildebeest.org.uk>
    Copyright (c) 2017      Sebastian Pipping <sebastian@pipping.org>
+   Copyright (c) 2023      Sony Corporation / Snild Dolkow <snild@sony.com>
    Licensed under the MIT license:
 
    Permission is  hereby granted,  free of charge,  to any  person obtaining
@@ -52,6 +53,7 @@ void CharData_Init(CharData *storage);
 
 void CharData_AppendXMLChars(CharData *storage, const XML_Char *s, int len);
 
+int CharData_SameXMLChars(CharData *storage, const XML_Char *s);
 int CharData_CheckXMLChars(CharData *storage, const XML_Char *s);
 
 #endif /* XML_CHARDATA_H */

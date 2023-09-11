@@ -12,6 +12,7 @@
    Copyright (c) 2016-2021 Sebastian Pipping <sebastian@pipping.org>
    Copyright (c) 2017      Joe Orton <jorton@redhat.com>
    Copyright (c) 2017      Rhodri James <rhodri@wildebeest.org.uk>
+   Copyright (c) 2023      Sony Corporation / Snild Dolkow <snild@sony.com>
    Licensed under the MIT license:
 
    Permission is  hereby granted,  free of charge,  to any  person obtaining
@@ -80,6 +81,22 @@ CharData_AppendXMLChars(CharData *storage, const XML_Char *s, int len) {
     memcpy(storage->data + storage->count, s, len * sizeof(storage->data[0]));
     storage->count += len;
   }
+}
+
+int
+CharData_SameXMLChars(CharData *storage, const XML_Char *expected) {
+  int len = xmlstrlen(expected);
+  int count;
+
+  assert(storage != NULL);
+  count = (storage->count < 0) ? 0 : storage->count;
+  if (len != count) {
+    return 0;
+  }
+  if (memcmp(expected, storage->data, len * sizeof(storage->data[0])) != 0) {
+    return 0;
+  }
+  return 1;
 }
 
 int
