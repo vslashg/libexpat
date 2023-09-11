@@ -5192,7 +5192,7 @@ START_TEST(test_big_tokens_take_linear_time) {
   };
   const int num_cases = sizeof(text) / sizeof(text[0]);
   // Warning: increasing this too much will make the test ineffectual.
-  const int max_slowdown = 14;
+  const int max_slowdown = 24;
   char aaaaaa[4096];
   const int fillsize = (int)sizeof(aaaaaa);
   const int fillcount = 100;

@@ -986,7 +986,7 @@ callProcessor(XML_Parser parser, const char *start, const char *end,
     // Heuristic: don't try to parse a partial token again until the amount of
     // available data has increased significantly.
     const size_t had_before = parser->m_partialTokenBytesBefore;
-    const bool enough = (have_now >= 2 * had_before);
+    const bool enough = (have_now >= 1.1 * had_before);
 
     if (! enough) {
       *endPtr = start; // callers may expect this to be set
