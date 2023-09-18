@@ -4638,6 +4638,12 @@ START_TEST(test_utf8_in_start_tags) {
   char doc[1024];
   size_t failCount = 0;
 
+  // we need all the bytes to be parsed, but we don't want the errors that can
+  // trigger on isFinal=XML_TRUE, so we skip the test if the heuristic is on.
+  if (g_initMaxDeferRatio > 1.0f) {
+    return;
+  }
+
   for (; i < sizeof(cases) / sizeof(cases[0]); i++) {
     size_t j = 0;
     for (; j < sizeof(atNameStart) / sizeof(atNameStart[0]); j++) {
@@ -5191,14 +5197,22 @@ START_TEST(test_big_tokens_take_linear_time) {
       {"<e><", "/></e>"},                   // big elem name, used to be O(N²)
   };
   const int num_cases = sizeof(text) / sizeof(text[0]);
-  // Warning: increasing this too much will make the test ineffectual.
-  const int max_slowdown = 24;
+  // Low reparse defer ratios like 1.1 do less for improving runtime than 2.0
+  // or 1000. Hence the more the ratio goes up, the less slowdown we tolerate.
+  // For the test we need <max_slowdown> values that are:
+  // (1) big enough that the test passes reliably (avoiding flaky tests), and
+  // (2) small enough that the test actually catches regressions.
+  const int max_slowdown = (g_initMaxDeferRatio < 2.0f ? 24 : 14);
   char aaaaaa[4096];
   const int fillsize = (int)sizeof(aaaaaa);
   const int fillcount = 100;
 
   memset(aaaaaa, 'a', fillsize);
 
+  assert_true(g_initMaxDeferRatio >= 1.0f);
+  if (g_initMaxDeferRatio == 1.0f) {
+    return; // heuristic is disabled; we would get O(n^2) and fail.
+  }
 #if defined(_WIN32)
   if (CLOCKS_PER_SEC < 100000) {
     // Skip this test if clock() doesn't have reasonably good resolution.
@@ -5214,7 +5228,8 @@ START_TEST(test_big_tokens_take_linear_time) {
     XML_Parser parser = XML_ParserCreate(NULL);
     assert_true(parser != NULL);
     enum XML_Status status;
-    set_subtest("%saaaaaa%s", text[i].pre, text[i].post);
+    set_subtest("max_slowdown=%d text=\"%saaaaaa%s\"", max_slowdown,
+                text[i].pre, text[i].post);
     const clock_t start = clock();
 
     // parse the start text

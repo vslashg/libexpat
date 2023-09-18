@@ -98,10 +98,16 @@ main(int argc, char *argv[]) {
     printf("Expat version: %" XML_FMT_STR "\n", XML_ExpatVersion());
 
   for (g_chunkSize = 0; g_chunkSize <= 5; g_chunkSize++) {
-    char context[100];
-    snprintf(context, sizeof(context), "chunksize=%d", g_chunkSize);
-    context[sizeof(context) - 1] = '\0';
-    srunner_run_all(sr, context, verbosity);
+    const float growth[] = {1.0f, 1.1f, 2.0f, 1000000.0f};
+    const int growth_len = sizeof(growth) / sizeof(growth[0]);
+    for (int growth_index = 0; growth_index < growth_len; ++growth_index) {
+      char context[100];
+      g_initMaxDeferRatio = growth[growth_index];
+      snprintf(context, sizeof(context), "chunksize=%d defer_ratio=%3.1f",
+               g_chunkSize, (double)g_initMaxDeferRatio);
+      context[sizeof(context) - 1] = '\0';
+      srunner_run_all(sr, context, verbosity);
+    }
   }
   srunner_summarize(sr, verbosity);
   nf = srunner_ntests_failed(sr);
