@@ -5409,8 +5409,7 @@ END_TEST
 
 START_TEST(test_set_reparse_limit_on_the_fly) {
   const char *const pre = "<d><x attr='";
-  const char *const end = "'></x";
-  const char *const post = ">";
+  const char *const end = "'></x>";
   char iiiiii[100];
   const int fillsize = (int)sizeof(iiiiii);
   memset(iiiiii, 'i', fillsize);
@@ -5446,10 +5445,10 @@ START_TEST(test_set_reparse_limit_on_the_fly) {
   }
   CharData_CheckXMLChars(&storage, XCS("d")); // not yet.
 
-  // now change the heuristic setting and add the minimum amount of data
+  // now change the heuristic setting and add *no* data
   assert_true(XML_SetReparseDeferralRatio(parser, 1.0));
   // we avoid isFinal=XML_TRUE, because that would force-bypass the heuristic.
-  status = XML_Parse(parser, post, (int)strlen(post), XML_FALSE);
+  status = XML_Parse(parser, "", 0, XML_FALSE);
   if (status != XML_STATUS_OK) {
     xml_failure(parser);
   }
