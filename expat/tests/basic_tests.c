@@ -5613,6 +5613,90 @@ START_TEST(test_set_bad_reparse_limit) {
 }
 END_TEST
 
+START_TEST(test_bypass_heuristic_when_close_to_maxbuf) {
+  // this test is slow; avoid running it multiple times for no reason.
+  if (g_chunkSize != 0) {
+    return; // we don't use SINGLE_BYTES
+  }
+  if (g_initMaxDeferRatio != 1.0f) {
+    return; // we set the ratio below, so the initial value won't matter.
+  }
+
+  const int maxbuf = INT_MAX / 2 + (INT_MAX & 1); // round up without overflow
+  const int fillsize = 1024 * 1024;
+  // we expect to be able to fill this many times, and no more.
+  // For example, in the common case of INT_MAX == 2³¹-1:
+  //    * maxbuf will be exactly 1 GiB (1024 * 1024 * 1024 bytes)
+  //    * that means Expat should be able to handle 1024 fills
+  //    * ...but XML_CONTEXT_BYTES can steal some of it from us.
+  const int expected_fills = (maxbuf - XML_CONTEXT_BYTES) / fillsize;
+  // Just to make sure the test isn't completely broken, check that
+  // expected_fills is reasonable for a common setup where int is at
+  // least 32 bits, and XML_CONTEXT_BYTES is no more than 2 MiB.
+  if (sizeof(int) >= 4 && XML_CONTEXT_BYTES <= 2 * fillsize) {
+    assert_true(expected_fills >= 1022);
+  }
+
+  XML_Parser parser = XML_ParserCreate(NULL);
+  assert_true(parser != NULL);
+  // make the deferral heuristic's threshold grow *extremely* quickly.
+  assert_true(XML_SetReparseDeferralRatio(parser, (float)INT_MAX));
+
+  // first fill, will push the heuristic threshold beyond the max buffer size
+  {
+    set_subtest("first fill");
+    char *const buf = (char *)XML_GetBuffer(parser, fillsize);
+    assert_true(buf != NULL);
+    memset(buf, 'a', fillsize);
+    buf[0] = '<';
+    if (XML_ParseBuffer(parser, fillsize, XML_FALSE) != XML_STATUS_OK)
+      xml_failure(parser);
+  }
+  // second fill, with data that is not well-formed
+  {
+    set_subtest("second fill");
+    char *const buf = (char *)XML_GetBuffer(parser, fillsize);
+    assert_true(buf != NULL);
+    strcpy(buf, "></wrongend>"); // leaving the rest of the bytes uninitialized
+    // the heuristic should defer parsing, so the error is not reported yet
+    if (XML_ParseBuffer(parser, fillsize, XML_FALSE) != XML_STATUS_OK)
+      xml_failure(parser);
+  }
+  // lots more fills, with uninitialized data (so the test goes fast)
+  // the -3 here is for the hardcoded "first"/"second"/"last" fills.
+  for (int fill = 0; fill < expected_fills - 3; ++fill) {
+    set_subtest("loop fill=%d", fill);
+    void *const buf = XML_GetBuffer(parser, fillsize);
+    if (buf == NULL) {
+      XML_ParserFree(parser); // avoid leaking our many-MiB parser
+#if defined(__MINGW32__) && ! defined(__MINGW64__)
+      // workaround for mingw/wine32 on GitHub CI not being able to reach 1GiB
+      return;
+#else
+      fail("buffer is NULL");
+#endif
+    }
+    // the heuristic should defer parsing, so the error is not reported yet
+    if (XML_ParseBuffer(parser, fillsize, XML_FALSE) != XML_STATUS_OK)
+      xml_failure(parser);
+  }
+  // last fill, should actually parse and detect the error
+  {
+    set_subtest("last fill");
+    void *const buf = XML_GetBuffer(parser, fillsize);
+    assert_true(buf != NULL);
+    // Using isFinal=XML_FALSE here is important: we want to check that the
+    // heuristic correctly detects the "close to out-of-memory" situation and
+    // actually parses the pending data. XML_TRUE would force the heuristic to
+    // parse regardless, which is not what we want.
+    if (XML_ParseBuffer(parser, fillsize, XML_FALSE) != XML_STATUS_ERROR)
+      fail("expected parse error");
+    assert_true(XML_GetErrorCode(parser) == XML_ERROR_TAG_MISMATCH);
+  }
+  XML_ParserFree(parser);
+}
+END_TEST
+
 void
 make_basic_test_case(Suite *s) {
   TCase *tc_basic = tcase_create("basic tests");
@@ -5859,4 +5943,5 @@ make_basic_test_case(Suite *s) {
   tcase_add_test(tc_basic, test_set_reparse_limit_on_null_parser);
   tcase_add_test(tc_basic, test_set_reparse_limit_on_the_fly);
   tcase_add_test(tc_basic, test_set_bad_reparse_limit);
+  tcase_add_test(tc_basic, test_bypass_heuristic_when_close_to_maxbuf);
 }
