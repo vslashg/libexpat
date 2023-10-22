@@ -166,15 +166,8 @@ run_tests() {
         done
     fi
 
-    local make_args=(
-        CTEST_OUTPUT_ON_FAILURE=1
-        CTEST_PARALLEL_LEVEL=2
-        VERBOSE=1
-        test
-    )
-    [[ $* =~ -DEXPAT_DTD=OFF ]] || make_args+=( run-xmltest )
-
-    RUN "${MAKE}" "${make_args[@]}"
+    RUN make VERBOSE=1 all runtests
+    RUN wine tests/runtests.exe
 }
 
 
