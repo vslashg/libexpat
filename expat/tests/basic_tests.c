@@ -2871,6 +2871,9 @@ START_TEST(test_buffer_can_grow_to_max) {
   const int maxbuf = INT_MAX / 2 + (INT_MAX & 1); // round up without overflow
 
   for (int i = 0; i < num_prefixes; ++i) {
+    printf("[g_chunkSize=%d][i=%d] BEGIN maxbuf=%d\n", g_chunkSize, i, maxbuf);
+    fflush(stdout);
+
     set_subtest("\"%s\"", prefixes[i]);
     XML_Parser parser = XML_ParserCreate(NULL);
     const int prefix_len = (int)strlen(prefixes[i]);
@@ -2879,6 +2882,25 @@ START_TEST(test_buffer_can_grow_to_max) {
     if (s != XML_STATUS_OK)
       xml_failure(parser);
 
+    for (int j = 0; j < maxbuf; j++) {
+      const int len = maxbuf - j;
+
+      printf(
+          "[g_chunkSize=%d][test_buffer_can_grow_to_max][i=%d/prefix_len=%3d]"
+          " XML_GetBuffer j=%3d len=%d -> ",
+          g_chunkSize, i, prefix_len, j, len);
+      fflush(stdout);
+
+      void *const buffer = XML_GetBuffer(parser, len);
+
+      printf("%s\n", (buffer == NULL) ? "failed" : "succeeded");
+      fflush(stdout);
+
+      if (buffer != NULL) {
+        break;
+      }
+    }
+
     // XML_CONTEXT_BYTES of the prefix may remain in the buffer;
     // subtracting the whole prefix is easiest, and close enough.
     fail_unless(XML_GetBuffer(parser, maxbuf - prefix_len) != NULL);
@@ -2886,6 +2908,10 @@ START_TEST(test_buffer_can_grow_to_max) {
     // reach above the max buffer size.
     fail_unless(XML_GetBuffer(parser, maxbuf + 1) == NULL);
     XML_ParserFree(parser);
+
+    printf("[g_chunkSize=%d][i=%d] END prefix_len=%d\n\n", g_chunkSize, i,
+           prefix_len);
+    fflush(stdout);
   }
 }
 END_TEST
