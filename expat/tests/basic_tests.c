@@ -5399,6 +5399,139 @@ START_TEST(test_set_reparse_defer_limit) {
 }
 END_TEST
 
+struct element_decl_data {
+  XML_Parser parser;
+  int count;
+};
+
+static void
+element_decl_counter(void *userData, const XML_Char *name, XML_Content *model) {
+  UNUSED_P(name);
+  struct element_decl_data *testdata = (struct element_decl_data *)userData;
+  testdata->count += 1;
+  XML_FreeContentModel(testdata->parser, model);
+}
+
+static int
+external_inherited_parser(XML_Parser p, const XML_Char *context,
+                          const XML_Char *base, const XML_Char *systemId,
+                          const XML_Char *publicId) {
+  UNUSED_P(base);
+  UNUSED_P(systemId);
+  UNUSED_P(publicId);
+  const char *const pre = "<!ELEMENT document ANY>\n";
+  const char *const start = "<!ELEMENT ";
+  const char *const end = " ANY>\n";
+  const char *const post = "<!ELEMENT xyz ANY>\n";
+  const float growth = *(float *)XML_GetUserData(p);
+  char eeeeee[100];
+  char spaces[100];
+  const int fillsize = (int)sizeof(eeeeee);
+  assert_true(fillsize == (int)sizeof(spaces));
+  memset(eeeeee, 'e', fillsize);
+  memset(spaces, ' ', fillsize);
+
+  XML_Parser parser = XML_ExternalEntityParserCreate(p, context, NULL);
+  assert_true(parser != NULL);
+
+  struct element_decl_data testdata;
+  testdata.parser = parser;
+  testdata.count = 0;
+  XML_SetUserData(parser, &testdata);
+  XML_SetElementDeclHandler(parser, element_decl_counter);
+
+  enum XML_Status status;
+  // parse the initial text
+  status = XML_Parse(parser, pre, (int)strlen(pre), XML_FALSE);
+  if (status != XML_STATUS_OK) {
+    xml_failure(parser);
+  }
+  assert_true(testdata.count == 1); // first element should be done
+
+  // ..and the start of the big token
+  status = XML_Parse(parser, start, (int)strlen(start), XML_FALSE);
+  if (status != XML_STATUS_OK) {
+    xml_failure(parser);
+  }
+  assert_true(testdata.count == 1); // still just the first one
+
+  // try to parse lots of 'e', but the token isn't finished
+  for (int c = 0; c < 100; ++c) {
+    status = XML_Parse(parser, eeeeee, fillsize, XML_FALSE);
+    if (status != XML_STATUS_OK) {
+      xml_failure(parser);
+    }
+  }
+  assert_true(testdata.count == 1); // *still* just the first one
+
+  // end the big token.
+  status = XML_Parse(parser, end, (int)strlen(end), XML_FALSE);
+  if (status != XML_STATUS_OK) {
+    xml_failure(parser);
+  }
+
+  // see how long it takes until the token is actually parsed
+  int extrafills = 0;
+  while (extrafills < 10000 && testdata.count == 1) {
+    extrafills++;
+    status = XML_Parse(parser, spaces, fillsize, XML_FALSE);
+    if (status != XML_STATUS_OK) {
+      xml_failure(parser);
+    }
+  }
+  // here's the critical part: the parser must not have overshot too much
+  if (growth == FLT_MAX) {
+    // ..except huge settings, which defer everything until isFinal=XML_TRUE
+    assert_true(testdata.count == 1);
+  } else {
+    assert_true(testdata.count == 2); // the big token should be done
+    const int tokensize
+        = (int)strlen(start) + 100 * fillsize + (int)strlen(end);
+    const int just_enough
+        = (int)strlen(pre) + tokensize + extrafills * fillsize;
+    const int not_enough = just_enough - fillsize;
+    assert_true(not_enough < tokensize * growth);
+  }
+
+  // parse the final text
+  status = XML_Parse(parser, post, (int)strlen(post), XML_TRUE);
+  if (status != XML_STATUS_OK) {
+    xml_failure(parser);
+  }
+  assert_true(testdata.count == 3); // last chance, must be done.
+
+  XML_ParserFree(parser);
+  return XML_STATUS_OK;
+}
+
+START_TEST(test_reparse_defer_limit_is_inherited) {
+  const char *const text
+      = "<!DOCTYPE document SYSTEM 'something.ext'><document/>";
+  const float cases[] = {1.0f, 1.1f, 2.0f, 7.89f, FLT_MAX};
+  const int n = sizeof(cases) / sizeof(cases[0]);
+
+  for (int i = 0; i < n; ++i) {
+    const float growth = cases[i];
+    if (growth == FLT_MAX) {
+      set_subtest("growth=FLT_MAX");
+    } else {
+      set_subtest("growth=%4.2f", (double)growth);
+    }
+
+    XML_Parser parser = XML_ParserCreate(NULL);
+    assert_true(parser != NULL);
+    XML_SetUserData(parser, (void *)&growth);
+    XML_SetParamEntityParsing(parser, XML_PARAM_ENTITY_PARSING_ALWAYS);
+    XML_SetExternalEntityRefHandler(parser, external_inherited_parser);
+    assert_true(XML_SetReparseDeferralRatio(parser, growth));
+    if (XML_Parse(parser, text, (int)strlen(text), XML_TRUE) != XML_STATUS_OK)
+      xml_failure(parser);
+
+    XML_ParserFree(parser);
+  }
+}
+END_TEST
+
 START_TEST(test_set_reparse_limit_on_null_parser) {
   assert_true(XML_SetReparseDeferralRatio(NULL, 0) == XML_FALSE);
   assert_true(XML_SetReparseDeferralRatio(NULL, 10) == XML_FALSE);
@@ -5722,6 +5855,7 @@ make_basic_test_case(Suite *s) {
   tcase_add_test__if_xml_ge(tc_basic, test_nested_entity_suspend);
   tcase_add_test(tc_basic, test_big_tokens_take_linear_time);
   tcase_add_test(tc_basic, test_set_reparse_defer_limit);
+  tcase_add_test(tc_basic, test_reparse_defer_limit_is_inherited);
   tcase_add_test(tc_basic, test_set_reparse_limit_on_null_parser);
   tcase_add_test(tc_basic, test_set_reparse_limit_on_the_fly);
   tcase_add_test(tc_basic, test_set_bad_reparse_limit);
