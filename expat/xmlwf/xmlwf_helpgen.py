@@ -82,6 +82,11 @@ billion_laughs.add_argument('-a', metavar='FACTOR',
                             help='set maximum tolerated [a]mplification factor (default: 100.0)')
 billion_laughs.add_argument('-b', metavar='BYTES', help='set number of output [b]ytes needed to activate (default: 8 MiB)')
 
+reparse_deferral = parser.add_argument_group('reparse deferral ratio')
+reparse_deferral.add_argument('-q', metavar='FACTOR',
+                            help='set reparse deferral ratio to avoid [q]uadratic parse runtime with large tokens'
+                                 ' (default: 1.1; 1.0 to disable deferral)')
+
 parser.add_argument('files', metavar='FILE', nargs='*', help='file to process (default: STDIN)')
 
 info = parser.add_argument_group('info arguments')

@@ -918,6 +918,9 @@ usage(const XML_Char *prog, int rc) {
       T("  -a FACTOR      set maximum tolerated [a]mplification factor (default: 100.0)\n")
       T("  -b BYTES       set number of output [b]ytes needed to activate (default: 8 MiB)\n")
       T("\n")
+      T("reparse deferral ratio:\n")
+      T("  -q FACTOR      set reparse deferral ratio to avoid [q]uadratic parse runtime with large tokens (default: 1.1; 1.0 to disable deferral)\n")
+      T("\n")
       T("info arguments:\n")
       T("  -h, --help     show this [h]elp message and exit\n")
       T("  -v, --version  show program's [v]ersion number and exit\n")
@@ -972,6 +975,9 @@ tmain(int argc, XML_Char **argv) {
   float attackMaximumAmplification = -1.0f; /* signaling "not set" */
   unsigned long long attackThresholdBytes = 0;
   XML_Bool attackThresholdGiven = XML_FALSE;
+
+  float reparseDeferralRatio = -1.0f; /* default to invalid ratio */
+  XML_Bool deferralRatioGiven = XML_FALSE;
 
   int exitCode = XMLWF_EXIT_SUCCESS;
   enum XML_ParamEntityParsing paramEntityParsing
@@ -1125,6 +1131,25 @@ tmain(int argc, XML_Char **argv) {
 #endif
       break;
     }
+    case T('q'): {
+      const XML_Char *valueText = NULL;
+      XMLWF_SHIFT_ARG_INTO(valueText, argc, argv, i, j);
+
+      errno = 0;
+      XML_Char *afterValueText = NULL;
+      reparseDeferralRatio = tcstof(valueText, &afterValueText);
+      if ((errno != 0) || (afterValueText[0] != T('\0'))
+          || ! isfinite(reparseDeferralRatio)
+          || (reparseDeferralRatio < 1.0f)) {
+        // This prevents tperror(..) from reporting misleading "[..]: Success"
+        errno = ERANGE;
+        tperror(T("invalid reparse referral ratio") T(
+            " (needs a finite floating point number greater or equal than 1.0)"));
+        exit(XMLWF_EXIT_USAGE_ERROR);
+      }
+      deferralRatioGiven = XML_TRUE;
+      break;
+    }
     case T('\0'):
       if (j > 1) {
         i++;
@@ -1169,6 +1194,17 @@ tmain(int argc, XML_Char **argv) {
 #else
       (void)attackThresholdBytes; // silence -Wunused-but-set-variable
 #endif
+    }
+
+    if (deferralRatioGiven) {
+      const XML_Bool success
+          = XML_SetReparseDeferralRatio(parser, reparseDeferralRatio);
+      if (! success) {
+        // This prevents tperror(..) from reporting misleading "[..]: Success"
+        errno = ERANGE;
+        tperror(T("Failed to set reparse deferral ratio"));
+        exit(XMLWF_EXIT_INTERNAL_ERROR);
+      }
     }
 
     if (requireStandalone)
