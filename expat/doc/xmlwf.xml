@@ -343,6 +343,17 @@ supports both.
       </varlistentry>
 
       <varlistentry>
+        <term><option>-q</option> <replaceable>factor</replaceable></term>
+        <listitem>
+          <para>
+            Sets the reparse deferral ratio to avoid quadratic parse runtime
+            with large tokens
+            (default: 1.1; 1.0 to disable deferral)
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
         <term><option>-r</option></term>
         <listitem>
 		<para>
