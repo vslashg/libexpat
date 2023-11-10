@@ -1943,7 +1943,9 @@ XML_Parse(XML_Parser parser, const char *s, int len, int isFinal) {
     }
     // though this isn't a buffer request, we assume that `len` is the app's
     // preferred buffer fill size, and therefore save it here.
-    parser->m_lastBufferRequestSize = len;
+    if (len > 0) {
+      parser->m_lastBufferRequestSize = len;
+    }
     parser->m_parseEndByteIndex += len;
     parser->m_positionPtr = s;
     parser->m_parsingStatus.finalBuffer = (XML_Bool)isFinal;
@@ -1984,7 +1986,9 @@ XML_Parse(XML_Parser parser, const char *s, int len, int isFinal) {
       parser->m_parsingStatus.parsing = originalStatus;
       // GetBuffer may have overwritten this, but we want to remember what the
       // app requested, not how many bytes were left over after parsing.
-      parser->m_lastBufferRequestSize = len;
+      if (len > 0) {
+        parser->m_lastBufferRequestSize = len;
+      }
       if (temp == NULL) {
         // NOTE: parser->m_errorCode has already been set by XML_GetBuffer().
         parser->m_eventPtr = parser->m_eventEndPtr = NULL;
@@ -2101,7 +2105,9 @@ XML_GetBuffer(XML_Parser parser, int len) {
 
   // whether or not the request succeeds, `len` seems to be the app's preferred
   // buffer fill size; remember it.
-  parser->m_lastBufferRequestSize = len;
+  if (len > 0) {
+    parser->m_lastBufferRequestSize = len;
+  }
   if (len > EXPAT_SAFE_PTR_DIFF(parser->m_bufferLim, parser->m_bufferEnd)
       || parser->m_buffer == NULL) {
 #if XML_CONTEXT_BYTES > 0
