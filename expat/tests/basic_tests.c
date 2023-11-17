@@ -5669,8 +5669,8 @@ START_TEST(test_bypass_heuristic_when_close_to_maxbuf) {
     void *const buf = XML_GetBuffer(parser, fillsize);
     if (buf == NULL) {
       XML_ParserFree(parser); // avoid leaking our many-MiB parser
-#if defined(__MINGW32__) && ! defined(__MINGW64__)
-      // workaround for mingw/wine32 on GitHub CI not being able to reach 1GiB
+#if defined(_WIN32) && ! defined(_WIN64)
+      // workaround for 32bit Windows not being able to reach 1GiB
       return;
 #else
       fail("buffer is NULL");
