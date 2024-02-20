@@ -162,7 +162,7 @@ const char *unsignedCharToPrintable(unsigned char c);
 #endif
 
 extern XML_Bool g_reparseDeferralEnabledDefault; // written ONLY in runtests.c
-extern unsigned int g_bytesScanned;              // used for testing only
+extern XML_ATOMIC unsigned int g_bytesScanned;   // used for testing only
 
 #ifdef __cplusplus
 }

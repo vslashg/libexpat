@@ -630,7 +630,7 @@ static unsigned long getDebugLevel(const char *variableName,
        : ((*((pool)->ptr)++ = c), 1))
 
 XML_Bool g_reparseDeferralEnabledDefault = XML_TRUE; // write ONLY in runtests.c
-unsigned int g_bytesScanned = 0;                     // used for testing only
+XML_ATOMIC unsigned int g_bytesScanned = 0;          // used for testing only
 
 struct XML_ParserStruct {
   /* The first member must be m_userData so that the XML_GetUserData

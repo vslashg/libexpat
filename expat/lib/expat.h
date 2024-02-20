@@ -46,6 +46,12 @@
 #include <stdlib.h>
 #include "expat_external.h"
 
+#if __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_ATOMICS__)
+#define XML_ATOMIC _Atomic
+#else
+#define XML_ATOMIC
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
